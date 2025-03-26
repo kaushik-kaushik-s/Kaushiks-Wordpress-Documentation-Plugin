@@ -1,61 +1,86 @@
 <?php
 /*
-Plugin Name: Kaushik Sannidhi's Documentation Manager
-Description: A comprehensive documentation management system for WordPress
-Version: 1.0.0
+Plugin Name: Kaushik Sannidhi's Wordpress Documentation Plugin
+Description: A documentation plugin that creates a custom post type for docs with categories, a customizable docs page featuring search functionality, and theme customizer support.
+Version: 1.0
 Author: Kaushik Sannidhi
 */
-
-if (!defined('ABSPATH')) {
-    exit;
-}
-
-require_once plugin_dir_path(__FILE__) . 'includes/documentation-post-type.php';
-require_once plugin_dir_path(__FILE__) . 'includes/documentation-meta-boxes.php';
-require_once plugin_dir_path(__FILE__) . 'includes/documentation-taxonomies.php';
-require_once plugin_dir_path(__FILE__) . 'includes/documentation-search.php';
-require_once plugin_dir_path(__FILE__) . 'includes/documentation-shortcodes.php';
-require_once plugin_dir_path(__FILE__) . 'includes/documentation-settings.php';
-
-class KaushikSannidhiDocsManager {
-    public function __construct() {
-        add_action('init', array($this, 'init'));
-        add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
-        add_action('wp_enqueue_scripts', array($this, 'enqueue_frontend_scripts'));
-    }
-
-    public function init() {
-        DocumentationPostType::register_post_type();
-        DocumentationTaxonomies::register_taxonomies();
-    }
-
-    public function enqueue_admin_scripts() {
-        wp_enqueue_script('jquery-ui-core');
-        wp_enqueue_script('jquery-ui-tabs');
-        wp_enqueue_style('ks-docs-admin-style', plugin_dir_url(__FILE__) . 'assets/css/admin-style.css');
-    }
-
-    public function enqueue_frontend_scripts() {
-        wp_enqueue_style('ks-docs-frontend-style', plugin_dir_url(__FILE__) . 'assets/css/frontend-style.css');
-        wp_enqueue_script('ks-docs-search', plugin_dir_url(__FILE__) . 'assets/js/search.js', array('jquery'), '1.0.0', true);
-        
-        wp_localize_script('ks-docs-search', 'ksDocsSearch', array(
-            'ajax_url' => admin_url('admin-ajax.php')
-        ));
-    }
-
-    public static function activate() {
-        DocumentationPostType::register_post_type();
-        DocumentationTaxonomies::register_taxonomies();
-        flush_rewrite_rules();
-    }
-
-    public static function deactivate() {
-        flush_rewrite_rules();
-    }
-}
-
-register_activation_hook(__FILE__, array('KaushikSannidhiDocsManager', 'activate'));
-register_deactivation_hook(__FILE__, array('KaushikSannidhiDocsManager', 'deactivate'));
-
-$ks_docs_manager = new KaushikSannidhiDocsManager();
+add_action('init', function(){
+	register_post_type('doc', array(
+		'labels' => array(
+			'name' => 'Docs',
+			'singular_name' => 'Doc',
+			'add_new' => 'Add New',
+			'add_new_item' => 'Add New Doc',
+			'edit_item' => 'Edit Doc',
+			'new_item' => 'New Doc',
+			'view_item' => 'View Doc',
+			'search_items' => 'Search Docs',
+			'not_found' => 'No docs found',
+			'not_found_in_trash' => 'No docs found in Trash'
+		),
+		'public' => true,
+		'has_archive' => true,
+		'supports' => array('title','editor','author','thumbnail','excerpt','revisions'),
+		'menu_icon' => 'dashicons-media-document',
+		'rewrite' => array('slug' => 'docs')
+	));
+	register_taxonomy('doc_category', 'doc', array(
+		'labels' => array(
+			'name' => 'Doc Categories',
+			'singular_name' => 'Doc Category',
+			'search_items' => 'Search Doc Categories',
+			'all_items' => 'All Doc Categories',
+			'edit_item' => 'Edit Doc Category',
+			'update_item' => 'Update Doc Category',
+			'add_new_item' => 'Add New Doc Category',
+			'new_item_name' => 'New Doc Category Name'
+		),
+		'hierarchical' => true,
+		'rewrite' => array('slug' => 'doc-category')
+	));
+});
+add_action('customize_register', function($wp_customize){
+	$wp_customize->add_section('kswdp_section', array('title' => 'Documentation Settings', 'priority' => 30));
+	$wp_customize->add_setting('kswdp_heading_color', array('default' => '#000000', 'transport' => 'refresh'));
+	$wp_customize->add_control(new WP_Customize_Color_Control($wp_customize, 'kswdp_heading_color_control', array('label' => 'Heading Color', 'section' => 'kswdp_section', 'settings' => 'kswdp_heading_color')));
+	$wp_customize->add_setting('kswdp_background_color', array('default' => '#ffffff', 'transport' => 'refresh'));
+	$wp_customize->add_control(new WP_Customize_Color_Control($wp_customize, 'kswdp_background_color_control', array('label' => 'Background Color', 'section' => 'kswdp_section', 'settings' => 'kswdp_background_color')));
+});
+add_action('wp_head', function(){
+	$heading_color = get_theme_mod('kswdp_heading_color', '#000000');
+	$background_color = get_theme_mod('kswdp_background_color', '#ffffff');
+	echo '<style>.kswdp-doc-page h2{color:'.$heading_color.';} .kswdp-doc-page{background-color:'.$background_color.'; padding:20px;}</style>';
+});
+add_action('wp_enqueue_scripts', function(){
+	wp_enqueue_style('kswdp-style', plugin_dir_url(__FILE__).'assets/css/kswdp-style.css');
+	wp_enqueue_script('kswdp-script', plugin_dir_url(__FILE__).'assets/js/kswdp-script.js', array('jquery'), null, true);
+});
+add_shortcode('documentation_page', function(){
+	$output = '<div class="kswdp-doc-page">';
+	$output .= '<form method="get" action="'.esc_url(get_post_type_archive_link('doc')).'"><input type="text" name="doc_search" placeholder="Search Docs" value="'.(isset($_GET['doc_search']) ? esc_attr($_GET['doc_search']) : '').'"/><input type="submit" value="Search"/></form>';
+	$args = array('post_type' => 'doc','posts_per_page' => -1);
+	if(isset($_GET['doc_search']) && !empty($_GET['doc_search'])){
+		$args['s'] = sanitize_text_field($_GET['doc_search']);
+	}
+	$docs = new WP_Query($args);
+	$grouped = array();
+	if($docs->have_posts()){
+		while($docs->have_posts()){
+			$docs->the_post();
+			$terms = get_the_terms(get_the_ID(), 'doc_category');
+			$cat = ($terms && !is_wp_error($terms)) ? $terms[0]->name : 'Uncategorized';
+			$grouped[$cat][] = array('title' => get_the_title(), 'link' => get_permalink());
+		}
+		wp_reset_postdata();
+	}
+	foreach($grouped as $category => $items){
+		$output .= '<h2>'.esc_html($category).'</h2><ul>';
+		foreach($items as $item){
+			$output .= '<li><a href="'.esc_url($item['link']).'">'.esc_html($item['title']).'</a></li>';
+		}
+		$output .= '</ul>';
+	}
+	$output .= '</div>';
+	return $output;
+});
